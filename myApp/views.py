@@ -3,19 +3,45 @@ from django.shortcuts import render
 import pandas as pd
 import joblib
 
-data = pd.read_pickle('myApp/dataset/data.pkl')
-preprocessor = joblib.load('myApp/models/preprocessor.joblib')
+# Lazy loading to reduce memory usage and startup time
+_data = None
+_preprocessor = None
+_feature_matrix = None
+_cosine_sim = None
+_kmeans = None
 
-# Transform the features
-feature_matrix = preprocessor.fit_transform(data)
+def get_data():
+    global _data
+    if _data is None:
+        _data = pd.read_pickle('myApp/dataset/data.pkl')
+    return _data
 
-# Compute the cosine similarity matrix
-cosine_sim = cosine_similarity(feature_matrix, feature_matrix)
+def get_preprocessor():
+    global _preprocessor
+    if _preprocessor is None:
+        _preprocessor = joblib.load('myApp/models/preprocessor.joblib')
+    return _preprocessor
 
-# Load the saved models
-# preprocessor = joblib.load('myApp/models/preprocessor.joblib')
-# dbscan = joblib.load('myApp/models/dbscan_model.joblib')
-kmeans = joblib.load('myApp/models/kmeans_model.joblib')
+def get_feature_matrix():
+    global _feature_matrix
+    if _feature_matrix is None:
+        data = get_data()
+        preprocessor = get_preprocessor()
+        _feature_matrix = preprocessor.transform(data)  # Use transform, not fit_transform
+    return _feature_matrix
+
+def get_cosine_sim():
+    global _cosine_sim
+    if _cosine_sim is None:
+        feature_matrix = get_feature_matrix()
+        _cosine_sim = cosine_similarity(feature_matrix, feature_matrix)
+    return _cosine_sim
+
+def get_kmeans():
+    global _kmeans
+    if _kmeans is None:
+        _kmeans = joblib.load('myApp/models/kmeans_model.joblib')
+    return _kmeans
 
 # feature_matrix = joblib.load(open("myApp/models/feature_matrix.joblib", "rb"))
 # feature_matrix = feature_matrix.reshape(-1, 1)
@@ -27,6 +53,11 @@ def home(request):
     return render(request, 'index.html')
 
 def get_recommendations(search_param, n_recommendations=6):
+    # Lazy load data and models
+    data = get_data()
+    kmeans = get_kmeans()
+    cosine_sim = get_cosine_sim()
+    
     # Filter data based on search parameter
     search_results = data[data['Title'].str.contains(search_param, case=False) |
                           (data['Category'] == search_param) |
@@ -51,6 +82,8 @@ def get_recommendations(search_param, n_recommendations=6):
     sim_scores = sim_scores[:n_recommendations]
     product_indices = [i[0] for i in sim_scores]
     
+    # Use data from lazy loader
+    data = get_data()
     recommendations_kmeans = []
 
     # Append the recommendations to the list
